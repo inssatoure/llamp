@@ -1,0 +1,137 @@
+# Guide d'Implémentation : Chat Vocal Python avec l'IA Disciple
+
+Ce document est un guide technique pour reproduire la fonctionnalité de chat de LAMP AI (entrée vocale, sortie textuelle) dans une application Python, en utilisant l'API Google Gemini.
+
+## 1. Objectif
+
+L'objectif est de créer un flux où :
+1.  L'utilisateur envoie un message vocal (en français ou en wolof).
+2.  L'application Python transcrit cet audio en texte.
+3.  Ce texte est envoyé à une IA configurée avec la "discipline" de LAMP AI.
+4.  L'IA répond par écrit dans la langue de l'utilisateur.
+
+## 2. Architecture du Flux
+
+Le processus se déroule en 4 étapes clés qui se passent dans votre backend Python :
+
+`Audio de l'Utilisateur` -> **Étape A : Transcription** -> `Texte Transcrit` -> **Étape B : Analyse & Réponse** -> `Texte de l'IA`
+
+## 3. Prérequis
+
+Assurez-vous d'avoir installé le SDK Python de Google :
+
+```bash
+pip install -q google-generativeai
+```
+
+## 4. Implémentation Étape par Étape
+
+Voici un exemple de code complet. Vous pouvez l'adapter, par exemple, en l'intégrant dans un framework web comme Flask ou FastAPI pour recevoir l'audio d'un client web.
+
+```python
+import google.generativeai as genai
+import os
+
+# --- ÉTAPE 1: CONFIGURATION ---
+# Stockez votre clé de manière sécurisée (ex: variable d'environnement)
+# Pour ce guide, nous la mettons ici, mais ne le faites pas en production.
+API_KEY = "AIzaSyBdRmdDR6_Ad1SoDx_hE2Ri0Mi-xNA6QpA" 
+genai.configure(api_key=API_KEY)
+
+# Le "Prompt Système" qui donne son âme à votre IA.
+# Vous pouvez le charger depuis le fichier PROMPT_SYSTEME_PYTHON.md
+SYSTEM_INSTRUCTION = """
+**--- IDENTITÉ ET POSTURE ---**
+Tu es un disciple (talibe) de la voie du Mouridisme. Ton unique but est d'étudier les enseignements que l'on te confie et de servir ton guide avec humilité et dévotion. Ton interlocuteur est ton guide spirituel (ton Jewrign). Adresse-toi toujours à lui avec le plus grand respect.
+
+**--- MISSION PRINCIPALE : L'ÉTUDE DE LA BIBLIOTHÈQUE ---**
+Ta mission pour chaque conversation est de répondre aux questions de ton Jewrign en te basant sur une bibliothèque de connaissances qui t'est fournie. Cette bibliothèque est ta seule et unique source de vérité. Ton rôle n'est pas de débattre ou de donner ton avis, mais d'extraire, d'expliquer et de synthétiser la connaissance contenue dans ces textes.
+
+**--- RÈGLES DE COMPORTEMENT STRICTES ---**
+1.  **Source Unique de Vérité :** Tu ne dois répondre qu'en te basant **exclusivement** sur les informations contenues dans les références (le contexte) qui accompagnent la question de l'utilisateur. Ne fais jamais appel à tes connaissances générales extérieures.
+2.  **Humble Ignorance :** Si une question porte sur un sujet qui n'est pas abordé dans les références fournies, tu dois humblement répondre que l'information ne se trouve pas dans l'enseignement que tu as reçu.
+3.  **Langue de Réponse :** Réponds toujours dans la langue de la dernière question de ton Jewrign.
+
+**--- SALUTATIONS ---**
+Commence toujours ta toute première réponse de la conversation par une salutation respectueuse, comme "Assalamu alaikum, Jewrign bi. Je suis prêt pour vos questions."
+"""
+
+# Initialisation du modèle d'IA pour la conversation
+model = genai.GenerativeModel(
+    'gemini-2.5-flash',
+    system_instruction=SYSTEM_INSTRUCTION
+)
+chat_session = model.start_chat(history=[])
+
+# --- FONCTION PRINCIPALE DU CHAT VOCAL ---
+
+def handle_voice_message(audio_file_path):
+    """
+    Traite un fichier audio : le transcrit, obtient une réponse de l'IA, et la retourne.
+    """
+    print(f"--- Début du traitement pour : {audio_file_path} ---")
+
+    # --- ÉTAPE 2: TRANSCRIPTION DE L'AUDIO ---
+    # On utilise ici un modèle Gemini capable de comprendre l'audio.
+    print("1. Envoi de l'audio à Gemini pour transcription...")
+    
+    audio_file = genai.upload_file(path=audio_file_path)
+    
+    # Prompt de transcription
+    transcription_prompt = """
+    Transcris le texte de cet audio. La langue parlée est très probablement le wolof, mais pourrait être du français.
+    L'audio peut contenir du bruit de fond ; fais de ton mieux pour isoler la voix principale et transcrire uniquement les paroles pertinentes.
+    Ne fournis que la transcription brute, sans aucun texte ou formatage supplémentaire.
+    """
+    
+    transcription_model = genai.GenerativeModel('gemini-2.5-flash')
+    response = transcription_model.generate_content([transcription_prompt, audio_file])
+    transcribed_text = response.text.strip()
+    
+    if not transcribed_text:
+        return "Je n'ai pas pu comprendre ce qui a été dit dans l'audio."
+        
+    print(f"2. Texte transcrit reçu : '{transcribed_text}'")
+
+    # --- ÉTAPE 3: OBTENIR LA RÉPONSE DE L'IA ---
+    # C'est ici que l'IA "disciple" intervient.
+    print("3. Envoi du texte à l'IA disciple pour analyse et réponse...")
+    
+    # (Optionnel) Ici, vous pourriez chercher des références dans votre propre base de données
+    # pour les ajouter au prompt. C'est le principe du RAG.
+    # Pour cet exemple, nous envoyons directement la question.
+
+    ia_response = chat_session.send_message(transcribed_text)
+    
+    print(f"4. Réponse de l'IA reçue.")
+    
+    return {
+        "user_transcription": transcribed_text,
+        "ia_response": ia_response.text
+    }
+
+# --- EXEMPLE D'UTILISATION ---
+if __name__ == "__main__":
+    # Simule un fichier audio reçu. Remplacez par le chemin d'un vrai fichier audio (ex: .wav, .mp3).
+    # Vous pouvez enregistrer un message vocal en wolof pour tester.
+    # Par exemple, enregistrez-vous disant "Nanga def Serigne bi".
+    path_to_your_audio_file = "chemin/vers/votre/fichier_audio.mp3" 
+    
+    if os.path.exists(path_to_your_audio_file):
+        result = handle_voice_message(path_to_your_audio_file)
+        print("\n--- RÉSULTAT FINAL ---")
+        print(f"Votre message (transcrit) : {result['user_transcription']}")
+        print(f"Réponse de LAMP AI : {result['ia_response']}")
+    else:
+        print(f"ERREUR : Le fichier audio d'exemple n'a pas été trouvé à '{path_to_your_audio_file}'.")
+        print("Veuillez enregistrer un fichier audio et mettre à jour le chemin dans le code.")
+
+```
+
+### Comment utiliser ce guide :
+
+1.  **Installez la librairie** : `pip install -q google-generativeai`.
+2.  **Configurez votre clé API** : Remplacez `"VOTRE_CLE_API_GEMINI_ICI"` par votre clé réelle.
+3.  **Testez avec un fichier audio** : Enregistrez un court message vocal (en français ou en wolof) au format MP3 ou WAV. Mettez le chemin correct dans la variable `path_to_your_audio_file`.
+4.  **Exécutez le script Python**. Vous verrez dans votre terminal les étapes de la transcription et la réponse finale de l'IA.
+5.  **Intégrez dans votre application** : Vous pouvez transformer la fonction `handle_voice_message` en un endpoint de votre application web (par exemple avec Flask) qui accepte un fichier audio et retourne la réponse en JSON.
