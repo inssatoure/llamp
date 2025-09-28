@@ -12,6 +12,8 @@ import PyPDF2
 import tempfile
 import os
 from streamlit_mic_recorder import mic_recorder
+import json
+import time
 
 # Le prompt qui améliore considérablement la qualité de la transcription
 transcription_prompt = """
@@ -93,7 +95,7 @@ def process_file(uploaded_file):
         return {"type": "text", "content": "".join(page.extract_text() for page in reader.pages if page.extract_text())}
     
     if file_type == "zip":
-        with zipfile.ZipFile(uploaded_file) as z:  # <- Hier beginnt der Block
+        with zipfile.ZipFile(uploaded_file) as z:
             newline = "\n"
             content = f"ZIP Contents:{newline}"
             
@@ -116,9 +118,9 @@ def process_file(uploaded_file):
                                 except UnicodeDecodeError:
                                     content += f"{newline}⚠️ Binärdatei ignoriert: {file_info.filename}{newline}"
                     except Exception as e:
-                        content += f"{newline}❌ Fehler bei {file_info.filename}: {str(e)}{newline}"
+                        content += f"{newline}❌ Erreur bei {file_info.filename}: {str(e)}{newline}"
             
-            return {"type": "text", "content": content}  # Korrekt eingerückt
+            return {"type": "text", "content": content}
     
     return {"type": "error", "content": "Unsupported file format"}
 
@@ -132,8 +134,36 @@ def transcribe_audio_with_gemini(audio_file_path):
         st.error(f"Erreur lors de la transcription audio: {e}")
         return None
 
+# Funktionen zur Dateiverarbeitung
+def process_knowledge_base_document(uploaded_file):
+    file_type = uploaded_file.name.split('.')[-1].lower()
+    if file_type == "pdf":
+        reader = PyPDF2.PdfReader(uploaded_file)
+        return "".join(page.extract_text() for page in reader.pages if page.extract_text())
+    elif file_type == "txt":
+        return uploaded_file.read().decode("utf-8")
+    else:
+        return "Unsupported file type for knowledge base."
+
 # Sidebar für Einstellungen
 with st.sidebar:
+    st.subheader("Admin Panel")
+    uploaded_kb_file = st.file_uploader("Upload Knowledge Base Document (PDF, TXT)", type=["pdf", "txt"], key="kb_uploader")
+
+    if uploaded_kb_file is not None:
+        file_path = os.path.join("knowledge_base_docs", uploaded_kb_file.name)
+        with open(file_path, "wb") as f:
+            f.write(uploaded_kb_file.getbuffer())
+        st.success(f"Fichier '{uploaded_kb_file.name}' téléchargé avec succès dans la base de connaissances.")
+        
+        # Process the uploaded knowledge base document
+        extracted_text = process_knowledge_base_document(uploaded_kb_file)
+        if extracted_text:
+            st.session_state[f"kb_content_{uploaded_kb_file.name}"] = extracted_text
+            st.info(f"Contenu du fichier '{uploaded_kb_file.name}' extrait et prêt à être indexé.")
+        else:
+            st.warning(f"Impossible d'extraire le contenu du fichier '{uploaded_kb_file.name}'.")
+
     st.subheader("Einstellungen")
     model_options = ["gemini-pro", "gemini-pro-vision", "gemini-2.5-flash"]
     
@@ -169,11 +199,15 @@ st.markdown("""
 .stMicRecorder {
     position: fixed;
     bottom: 16px;
-    left: 16px;
+    left: 50%; /* Centrer horizontalement */
+    transform: translateX(-50%); /* Ajuster pour un centrage parfait */
     z-index: 1000;
+    /* Vous pouvez ajouter d'autres styles ici pour le rendre plus grand ou plus visible */
 }
 .stChatInput {
-    margin-left: 60px !important;
+    margin-left: 0 !important; /* Réinitialiser la marge si nécessaire */
+    width: calc(100% - 80px); /* Ajuster la largeur pour laisser de l'espace au bouton */
+    margin-bottom: 16px; /* Ajouter un peu d'espace en bas */
 }
 </style>
 """, unsafe_allow_html=True)
